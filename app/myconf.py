@@ -4,68 +4,122 @@
 # copyright (c) 2016 luffae@gmail.com
 #
 
-import sys
-
-reload(sys)
-sys.setdefaultencoding('utf-8')
-sys.dont_write_bytecode = True
+import yaml
+from collections import OrderedDict
 
 
-from myyaml import ordered_load, ordered_dump
+def ordered_load(stream, Loader=yaml.Loader, object_pairs_hook=OrderedDict):
+  """
+  usage:
+  ordered_load(stream, Loader=yaml.SafeLoader)
+  """
+  class OrderedLoader(Loader):
+    pass
+  def construct_mapping(loader, node):
+    loader.flatten_mapping(node)
+    return object_pairs_hook(loader.construct_pairs(node))
+  OrderedLoader.add_constructor(
+    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
+    construct_mapping)
+  return yaml.load(stream, OrderedLoader)
 
-def yaml_to_nagios_cfg(cfg_file):
-  service_definition = 'generic-passive-service'
 
-  buffer = ''
+def ordered_dump(data, stream=None, Dumper=yaml.SafeDumper, **kwds):
+  """
+  usage:
+  ordered_dump(data, Dumper=yaml.SafeDumper)
+  """
+  class OrderedDumper(Dumper):
+    pass
+  def _dict_representer(dumper, data):
+    return dumper.represent_mapping(
+      yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
+      data.items())
+  OrderedDumper.add_representer(OrderedDict, _dict_representer)
+  return yaml.dump(data, stream, OrderedDumper, **kwds)
 
-  with open(cfg_file) as cf:
-    config = ordered_load(cf)
 
-  for h, hv in config.iteritems():
-    buffer += (
-      "\n"
-      "{0:/<64}\n".format('# ') +
-      "# Configuration for " + h + "\n"
-      "{0:/<64}\n".format('# ') + "\n"
-    )
+class NSCAConfig(object):
+  def __init__(self, cfg_file):
+    self.load_file(cfg_file)
 
-    buffer += (
-      "define host {\n" +
-      "    %-24s%s\n" % ('use', hv['template']) +
-      "    %-24s%s\n" % ('host_name', hv['alias']) +
-      "    %-24s%s\n" % ('alias', h) +
-      "    %-24s%s\n" % ('address', hv['address']) +
-      "}\n\n"
-    )
-
-    for j, jv in hv['jobs'].iteritems():
-      fresh_second = jv['params']['I'] * 60 + 300
-      buffer += (
-        "define service {\n"
-        "    %-24s%s\n" % ('use', service_definition) +
-        "    %-24s%s\n" % ('host_name', hv['alias']) +
-        "    %-24s%s\n" % ('service_description', j) +
-        "    %-24s%d\n" % ('freshness_threshold', fresh_second) +
-        "}\n\n"
+  def save_file(self, cfg_file):
+    with open(cfg_file, 'w') as cf:
+      cf.write(
+        ordered_dump(
+          self.cfg,
+          allow_unicode=True,
+          default_flow_style=False
+        )
       )
 
-  return buffer
+  def load_file(self, cfg_file):
+    with open(cfg_file) as cf:
+      self.cfg = ordered_load(cf)
+      for h in self.cfg.values():
+        for j in h['jobs'].values():
+          j['attempts'] = 3
 
 
-def yaml_update(cfg, cfg_file):
-  with open(cfg_file, 'w') as cf:
-    cf.write(
-      ordered_dump(
-        cfg,
-        allow_unicode=True,
-        default_flow_style=False
-      )
-    )
+  def add(self, item):
+    return None
 
+  def delete(self, item):
+    return None
 
-def yaml_get(cfg_file):
-  with open(cfg_file) as cf:
-    config = ordered_load(cf)
+  def get(self, fltr):
+    fl = dict()
+    # reconstract filter
+    if 'H' in fltr and fltr['H'] != "":
+      fl['H'] = fltr['H']
+    if 'N' in fltr and fltr['N'] != "":
+      fl['N'] = fltr['N']
+    if 'A' in fltr and fltr['A'] >= 1:
+      fl['A'] = fltr['A']
+    if 'I' in fltr and fltr['I'] >= 1:
+      fl['I'] = fltr['I']
+    if 'w' in fltr and fltr['w'] >= 1:
+      fl['w'] = fltr['w']
+    if 'c' in fltr and fltr['c'] >= 1:
+      fl['c'] = fltr['c']
 
-  return config
+    # transform cfg object into a list
+    jobs = []
+    for h in self.cfg.values():
+      job = {}
+      job['H'] = h['address']
+
+      for j, jv in h['jobs'].iteritems():
+        job['N'] = j
+        job['A'] = jv['attempts']
+        job['I'] = jv['params']['I']
+        job['w'] = jv['params']['w']
+        job['c'] = jv['params']['c']
+        # fliter by fl
+        if all(i in job.items() for i in fl.items()):
+          jobs.append(job.copy())
+
+    return jobs
+
+  def update(self, item):
+    # validate values
+    if 'A' not in item or item['A'] < 1 or \
+       'I' not in item or item['I'] < 1 or \
+       'w' not in item or item['w'] < 1 or \
+       'c' not in item or item['c'] < 1 or \
+       'H' not in item or \
+       'N' not in item:
+      return None
+
+    # find target job and set values
+    for h in self.cfg.values():
+      if item['H'] == h['address'] and item['N'] in h['jobs']:
+        j = h['jobs'][item['N']]
+        j['attempts'] = item['A']
+        j['params']['I'] = item['I']
+        j['params']['w'] = item['w']
+        j['params']['c'] = item['c']
+        return item
+
+    return None
 
