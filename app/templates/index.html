@@ -1,0 +1,28 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Nagios NSCA Config</title>
+
+  <link rel="stylesheet" type="text/css" href="static/cdn/jsgrid.min.css" />
+  <link rel="stylesheet" type="text/css" href="static/cdn/jsgrid-theme.min.css" />
+  <link rel="stylesheet" type="text/css" href="static/index.css" />
+
+  <script type="text/javascript" src="static/cdn/jquery-1.12.0.min.js"></script>
+  <script type="text/javascript" src="static/cdn/jsgrid.min.js"></script>
+  <script type="text/javascript" src="static/db.js"></script>
+</head>
+
+<body>
+  <div class="config-panel">
+    <label><input id="filtering" type="checkbox" /> 过滤</label>
+    <label><input id="inserting" type="checkbox" /> 新增</label>
+    <label><input id="editing" type="checkbox" checked /> 编辑</label>
+    <label><input id="sorting" type="checkbox" checked /> 排序</label>
+  </div>
+
+  <div id="jsGrid"></div>
+  <script type="text/javascript" src="static/index.js"></script>
+</body>
+
+</html>
